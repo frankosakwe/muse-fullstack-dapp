@@ -2,9 +2,10 @@ import compression from 'compression'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import express from 'express'
-import mongoose from 'mongoose'
 
 import { securityMiddleware } from '@/middleware/security'
+import { database } from '@/config/database'
+import { databasePoolService } from '@/services/databasePoolService'
 import { requestContext } from '@/middleware/requestContext'
 import { requestLogger } from '@/middleware/requestLogger'
 import { errorHandler } from '@/middleware/errorHandler'
@@ -23,6 +24,7 @@ import apiKeyRoutes from '@/routes/apiKeys'
 import jobRoutes from '@/routes/jobs'
 import transactionRoutes from '@/routes/transactions'
 import analyticsRoutes from '@/routes/analytics'
+import databasePoolRoutes from '@/routes/databasePool'
 import healthService from '@/services/healthService'
 import cacheService from '@/services/cacheService'
 import { jobQueueService } from '@/services/jobQueueService'
@@ -130,6 +132,7 @@ export function createApp() {
   app.use('/api/jobs', jobRoutes)
   app.use('/api/transactions', transactionRoutes)
   app.use('/api/analytics', analyticsRoutes)
+  app.use('/api/database/pool', databasePoolRoutes)
 
   // ── 404 & Global Error Handlers ──────────────────────────────────────────────
   app.use(notFound)
@@ -141,8 +144,15 @@ export function createApp() {
 export const app = createApp()
 
 export async function startServer() {
-  await mongoose.connect(MONGODB_URI)
+  await database.connect()
   logger.info('Connected to MongoDB')
+
+  // Start database pool monitoring in production
+  if (process.env.NODE_ENV === 'production' || process.env.ENABLE_DB_POOL_MONITORING === 'true') {
+    const monitoringInterval = parseInt(process.env.DB_POOL_MONITORING_INTERVAL || '30000')
+    databasePoolService.startMonitoring(monitoringInterval)
+    logger.info(`Database pool monitoring started with ${monitoringInterval}ms interval`)
+  }
 
   if (process.env.NODE_ENV !== 'test') {
     try {
@@ -182,7 +192,14 @@ async function shutdown(signal: string) {
   }
 
   try {
-    await mongoose.connection.close()
+    databasePoolService.stopMonitoring()
+    logger.info('Database pool monitoring stopped')
+  } catch (error) {
+    logger.warn('Database pool monitoring stop encountered an error:', error)
+  }
+
+  try {
+    await database.disconnect()
   } catch (error) {
     logger.warn('MongoDB disconnect encountered an error:', error)
   }

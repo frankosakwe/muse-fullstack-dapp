@@ -3,6 +3,8 @@ import Redis from 'redis'
 import { createLogger } from '@/utils/logger'
 import cacheService from './cacheService'
 import { getStellarService } from './stellar'
+import { database } from '@/config/database'
+import { databasePoolService } from './databasePoolService'
 import axios from 'axios'
 
 const logger = createLogger('HealthService')
@@ -49,13 +51,20 @@ class HealthService {
         // Test database with a simple ping
         await mongoose.connection.db.admin().ping()
         
+        // Get pool health status
+        const poolHealth = databasePoolService.getPoolHealthStatus()
+        
         return {
-          status: 'healthy',
+          status: poolHealth.status === 'critical' ? 'unhealthy' : 
+                  poolHealth.status === 'warning' ? 'degraded' : 'healthy',
           responseTime: Date.now() - startTime,
           details: {
             readyState: mongoose.connection.readyState,
             host: mongoose.connection.host,
-            name: mongoose.connection.name
+            name: mongoose.connection.name,
+            pool: poolHealth.metrics,
+            poolIssues: poolHealth.issues,
+            poolRecommendations: poolHealth.recommendations
           }
         }
       } else if (mongoose.connection.readyState === 2) {

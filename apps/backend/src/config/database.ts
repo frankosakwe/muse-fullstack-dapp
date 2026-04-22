@@ -25,24 +25,26 @@ export class DatabaseConnection {
     try {
       const mongoUri = process.env.MONGODB_URI || process.env.DATABASE_URL || 'mongodb://localhost:27017/muse'
       
-      await mongoose.connect(mongoUri, {
-        // Connection pooling configuration
-        maxPoolSize: 50, // Maximum number of sockets in the connection pool
-        minPoolSize: 5,  // Minimum number of sockets in the connection pool
-        maxIdleTimeMS: 30000, // Close connections after 30 seconds of inactivity
-        serverSelectionTimeoutMS: 5000, // How long to try selecting a server before giving up
-        socketTimeoutMS: 45000, // How long a send or receive on a socket can take before timing out
+      const poolConfig = {
+        // Connection pooling configuration with environment-based defaults
+        maxPoolSize: parseInt(process.env.DB_MAX_POOL_SIZE || '50'), // Maximum number of sockets in the connection pool
+        minPoolSize: parseInt(process.env.DB_MIN_POOL_SIZE || '5'),  // Minimum number of sockets in the connection pool
+        maxIdleTimeMS: parseInt(process.env.DB_MAX_IDLE_TIME_MS || '30000'), // Close connections after 30 seconds of inactivity
+        serverSelectionTimeoutMS: parseInt(process.env.DB_SERVER_SELECTION_TIMEOUT_MS || '5000'), // How long to try selecting a server before giving up
+        socketTimeoutMS: parseInt(process.env.DB_SOCKET_TIMEOUT_MS || '45000'), // How long a send or receive on a socket can take before timing out
         bufferCommands: false, // Disable mongoose buffering
         bufferMaxEntries: 0, // Disable mongoose buffering
-        waitQueueTimeoutMS: 10000, // How long to wait for a connection before timing out
-        retryWrites: true, // Retry write operations if they fail
-        retryReads: true, // Retry read operations if they fail
-        readPreference: 'primary', // Read from primary by default
+        waitQueueTimeoutMS: parseInt(process.env.DB_WAIT_QUEUE_TIMEOUT_MS || '10000'), // How long to wait for a connection before timing out
+        retryWrites: process.env.DB_RETRY_WRITES !== 'false', // Retry write operations if they fail
+        retryReads: process.env.DB_RETRY_READS !== 'false', // Retry read operations if they fail
+        readPreference: process.env.DB_READ_PREFERENCE || 'primary', // Read from primary by default
         writeConcern: {
-          w: 'majority', // Write to majority of replica set members
-          j: true // Ensure writes are written to journal
+          w: process.env.DB_WRITE_CONCERN_W || 'majority', // Write to majority of replica set members
+          j: process.env.DB_WRITE_CONCERN_J !== 'false' // Ensure writes are written to journal
         }
-      })
+      }
+
+      await mongoose.connect(mongoUri, poolConfig)
 
       this.isConnected = true
       logger.info('Connected to MongoDB successfully')
@@ -115,8 +117,15 @@ export class DatabaseConnection {
       port: mongoose.connection.port,
       name: mongoose.connection.name,
       poolSize: 0,
-      maxPoolSize: 50,
-      minPoolSize: 5
+      maxPoolSize: parseInt(process.env.DB_MAX_POOL_SIZE || '50'),
+      minPoolSize: parseInt(process.env.DB_MIN_POOL_SIZE || '5'),
+      maxIdleTimeMS: parseInt(process.env.DB_MAX_IDLE_TIME_MS || '30000'),
+      serverSelectionTimeoutMS: parseInt(process.env.DB_SERVER_SELECTION_TIMEOUT_MS || '5000'),
+      socketTimeoutMS: parseInt(process.env.DB_SOCKET_TIMEOUT_MS || '45000'),
+      waitQueueTimeoutMS: parseInt(process.env.DB_WAIT_QUEUE_TIMEOUT_MS || '10000'),
+      retryWrites: process.env.DB_RETRY_WRITES !== 'false',
+      retryReads: process.env.DB_RETRY_READS !== 'false',
+      readPreference: process.env.DB_READ_PREFERENCE || 'primary'
     }
 
     // Get detailed pool statistics if available
